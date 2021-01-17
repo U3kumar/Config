@@ -1,0 +1,60 @@
+import os
+import paramiko
+from paramiko_expect import SSHClientInteraction
+import time
+
+_controlnet_ip = x.x.x.x
+_controlnet_username = Your Username
+_controlnet_password = Your Password
+_controlnet_prompt = _controlnet_username+"@iprns04 # "
+_devicePrompt = "p[a-z]{1,}[0-9]{1,}#"
+
+#Create dirctory in input folder
+def CreateDirectoryInputFolder(dirName):
+    os.mkdir(os.path.join("inputData",dirName))
+    return (os.path.join("inputData",dirName))
+
+#Create dirctory in output folder
+def CreateDirectoryOutputFolder(dirName):
+    os.mkdir(os.path.join("OutputData",dirName))
+    return (os.path.join("OutputData",dirName))
+
+#check device reachable or Not
+def controlnetSession(deviceName,commands):
+    _client = paramiko.SSHClient()      # define an object having SSH properties
+    _client.set_missing_host_key_policy(paramiko.AutoAddPolicy())   #for missing rsa keys to add in host file
+    _client.connect(hostname=_controlnet_ip,username=_controlnet_username,password=_controlnet_password,port=22)
+    with SSHClientInteraction(_client,display=False,timeout=300) as _controlnetSession:
+        _controlnetSession.expect("TACACS Nmstel password: ")
+        _controlnetSession.send(_controlnet_password)
+        try:
+            _controlnetSession.expect(_controlnet_prompt)
+        except:
+            _controlnetSession.expect("Username:")
+        finally:
+            _controlnetSession.expect("Password: ")
+
+        _controlnetSession.send("fping "+deviceName)
+        _controlnetSession.expect(_controlnet_prompt)
+        if "is alive" in _controlnetSession.current_output_clean:
+            CreateDirectoryInputFolder(deviceName)
+            _controlnetSession.send("l "+deviceName)
+            _controlnetSession.expect("Device connected.")
+            print("Device : "+deviceName+" Connected!...")
+            _controlnetSession.send("ter len 0")
+            _controlnetSession.expect(_devicePrompt)
+            for command in commands:
+                print("Executing command: "+command)
+                _controlnetSession.send(command)
+                _controlnetSession.expect(_devicePrompt)
+                with open(os.path.join("InputData",deviceName,command+".txt"),"w") as fp_:
+                    fp_.write(_controlnetSession.current_output_clean)
+        else:
+            print(_controlnetSession.current_output_clean)
+
+
+commands = ["show interface description","show ip interface brief","ping 8.8.8.8","show ip bgp summary"]
+devices = ["pabj341"]
+
+for deviceName in devices:
+    controlnetSession(deviceName,commands)
